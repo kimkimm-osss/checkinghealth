@@ -13,6 +13,7 @@ class NutrientAnalysisEngine {
         this.scores = {};
         this.basicInfo = {};
         this.answers = {};
+        this.evidences = {};  // 영양소별 근거 데이터 { nutrientKey: [{category, question, answer, score}] }
     }
 
     /**
@@ -22,8 +23,9 @@ class NutrientAnalysisEngine {
         this.basicInfo = basicInfo;
         this.answers = answers;
         this.scores = {};
+        this.evidences = {};
 
-        // Step 1: 증상 기반 기본 점수 계산
+        // Step 1: 증상 기반 기본 점수 계산 + 근거 수집
         this._calculateBaseScores();
 
         // Step 2: 기본 정보 보정 (나이, 성별, 생활습관, 식습관)
@@ -46,22 +48,40 @@ class NutrientAnalysisEngine {
                 if (answer === undefined || answer === null) return;
 
                 if (question.type === 'single') {
-                    // 단일선택: nutrients 배열에서 해당 value의 점수 추출
                     const val = parseInt(answer);
+                    const selectedOption = question.options[val];
                     Object.entries(question.nutrients).forEach(([nutrient, scoreArray]) => {
-                        if (Array.isArray(scoreArray) && scoreArray[val] !== undefined) {
+                        if (Array.isArray(scoreArray) && scoreArray[val] !== undefined && scoreArray[val] > 0) {
                             this.scores[nutrient] = (this.scores[nutrient] || 0) + scoreArray[val];
+                            // 근거 데이터 수집
+                            this._addEvidence(nutrient, {
+                                categoryTitle: category.title,
+                                categoryIcon: category.iconFallback || category.icon,
+                                questionText: question.text,
+                                answerText: selectedOption ? selectedOption.label : '',
+                                answerIcon: selectedOption ? selectedOption.icon : '',
+                                score: scoreArray[val]
+                            });
                         }
                     });
                 } else if (question.type === 'multi') {
-                    // 복수선택: 선택된 각 항목의 영양소 점수 합산
                     const selected = Array.isArray(answer) ? answer : [answer];
                     selected.forEach(val => {
                         if (val === 'none') return;
                         const nutrientMap = question.nutrients[val];
+                        const selectedOption = question.options.find(o => o.value === val);
                         if (nutrientMap) {
                             Object.entries(nutrientMap).forEach(([nutrient, score]) => {
                                 this.scores[nutrient] = (this.scores[nutrient] || 0) + score;
+                                // 근거 데이터 수집
+                                this._addEvidence(nutrient, {
+                                    categoryTitle: category.title,
+                                    categoryIcon: category.iconFallback || category.icon,
+                                    questionText: question.text,
+                                    answerText: selectedOption ? selectedOption.label : val,
+                                    answerIcon: selectedOption ? selectedOption.icon : '',
+                                    score: score
+                                });
                             });
                         }
                     });
@@ -76,124 +96,100 @@ class NutrientAnalysisEngine {
     _applyDemographicModifiers() {
         const { gender, age, lifestyle, diet } = this.basicInfo;
 
-        // === 성별 보정 ===
+        // === 성별 보정 (완화된 계수) ===
         if (gender === 'female') {
-            this._boost('iron', 1.5);      // 여성 철분 결핍 빈도 높음
-            this._boost('folate', 1.3);     // 가임기 여성 엽산 중요
-            this._boost('calcium', 1.2);    // 여성 골다공증 위험
-            this._boost('vitB6', 1.2);      // PMS 관련
+            this._boost('iron', 1.2);      // 여성 철분 결핍 빈도 높음
+            this._boost('folate', 1.15);    // 가임기 여성 엽산 중요
+            this._boost('calcium', 1.1);    // 여성 골다공증 위험
+            this._boost('vitB6', 1.1);      // PMS 관련
         }
         if (gender === 'male') {
-            this._boost('zinc', 1.2);       // 남성 아연 소모 높음
-            this._boost('protein', 1.1);
+            this._boost('zinc', 1.1);       // 남성 아연 소모 높음
+            this._boost('protein', 1.05);
         }
 
         // === 나이대 보정 ===
         switch (age) {
             case '10s':
-                this._boost('calcium', 1.4);
-                this._boost('iron', 1.3);
-                this._boost('vitD', 1.2);
-                this._boost('protein', 1.2);
-                this._boost('zinc', 1.2);
+                this._boost('calcium', 1.2);
+                this._boost('iron', 1.15);
+                this._boost('vitD', 1.1);
+                this._boost('protein', 1.1);
                 break;
             case '20s':
-                this._boost('iron', 1.2);
-                this._boost('vitD', 1.2);
-                this._boost('folate', 1.1);
+                this._boost('iron', 1.1);
+                this._boost('vitD', 1.1);
                 break;
             case '30s':
-                this._boost('vitD', 1.2);
-                this._boost('magnesium', 1.2);
-                this._boost('omega3', 1.1);
+                this._boost('vitD', 1.1);
+                this._boost('magnesium', 1.1);
                 break;
             case '40s':
-                this._boost('vitD', 1.3);
-                this._boost('omega3', 1.3);
-                this._boost('calcium', 1.2);
-                this._boost('coQ10', 1.3);
-                this._boost('collagen', 1.2);
+                this._boost('vitD', 1.15);
+                this._boost('omega3', 1.15);
+                this._boost('calcium', 1.1);
+                this._boost('coQ10', 1.1);
                 break;
             case '50s':
-                this._boost('vitD', 1.4);
-                this._boost('calcium', 1.4);
-                this._boost('vitB12', 1.3);
-                this._boost('omega3', 1.3);
-                this._boost('coQ10', 1.3);
-                this._boost('collagen', 1.3);
-                this._boost('glucosamine', 1.2);
+                this._boost('vitD', 1.2);
+                this._boost('calcium', 1.2);
+                this._boost('vitB12', 1.15);
+                this._boost('omega3', 1.15);
+                this._boost('coQ10', 1.1);
                 break;
             case '60plus':
-                this._boost('vitD', 1.5);
-                this._boost('calcium', 1.5);
-                this._boost('vitB12', 1.5);
-                this._boost('omega3', 1.4);
-                this._boost('protein', 1.3);
-                this._boost('coQ10', 1.4);
-                this._boost('collagen', 1.3);
-                this._boost('glucosamine', 1.3);
-                this._boost('digestive_enzyme', 1.3);
+                this._boost('vitD', 1.25);
+                this._boost('calcium', 1.25);
+                this._boost('vitB12', 1.2);
+                this._boost('omega3', 1.2);
+                this._boost('protein', 1.15);
+                this._boost('coQ10', 1.15);
                 break;
         }
 
         // === 생활 패턴 보정 ===
         switch (lifestyle) {
             case 'sedentary':
-                this._boost('vitD', 1.3);   // 실내생활 → 비타민D 부족
-                this._boost('fiber', 1.1);
-                this._addBase('vitD', 1);    // 기본 가산점
+                this._boost('vitD', 1.15);   // 실내생활 → 비타민D 부족
                 break;
             case 'very_active':
-                this._boost('magnesium', 1.3);
-                this._boost('potassium', 1.3);
-                this._boost('iron', 1.2);
-                this._boost('protein', 1.3);
-                this._boost('vitB1', 1.2);
-                this._boost('water', 1.2);
-                this._boost('sodium', 1.2);
+                this._boost('magnesium', 1.15);
+                this._boost('potassium', 1.15);
+                this._boost('protein', 1.15);
+                this._boost('water', 1.1);
                 break;
             case 'active':
-                this._boost('protein', 1.2);
-                this._boost('magnesium', 1.2);
-                this._boost('potassium', 1.1);
+                this._boost('protein', 1.1);
+                this._boost('magnesium', 1.1);
                 break;
         }
 
         // === 식습관 보정 ===
         switch (diet) {
             case 'vegetarian':
-                this._boost('vitB12', 1.8);   // 채식 시 B12 결핍 매우 높음
-                this._boost('iron', 1.5);
-                this._boost('zinc', 1.3);
-                this._boost('omega3', 1.4);
-                this._boost('protein', 1.3);
-                this._addBase('vitB12', 2);
-                this._addBase('iron', 1);
+                this._boost('vitB12', 1.3);   // 채식 시 B12 결핍 높음
+                this._boost('iron', 1.2);
+                this._boost('zinc', 1.15);
+                this._boost('omega3', 1.2);
+                this._boost('protein', 1.15);
+                this._addBase('vitB12', 1);
                 break;
             case 'meat_heavy':
-                this._boost('fiber', 1.4);
-                this._boost('vitC', 1.2);
-                this._boost('magnesium', 1.2);
-                this._boost('folate', 1.2);
-                this._boost('probiotics', 1.2);
+                this._boost('fiber', 1.2);
+                this._boost('vitC', 1.1);
+                this._boost('magnesium', 1.1);
                 break;
             case 'carb_heavy':
-                this._boost('protein', 1.3);
-                this._boost('chromium', 1.4);
-                this._boost('vitB1', 1.3);
-                this._boost('zinc', 1.2);
-                this._boost('omega3', 1.2);
+                this._boost('protein', 1.15);
+                this._boost('chromium', 1.2);
+                this._boost('vitB1', 1.15);
+                this._boost('omega3', 1.1);
                 break;
             case 'irregular':
-                this._boost('vitB_complex', 1.3);
-                this._boost('iron', 1.2);
-                this._boost('magnesium', 1.2);
-                this._boost('protein', 1.2);
-                this._boost('fiber', 1.2);
-                // 불규칙 식사 시 전반적 결핍 위험 증가
-                Object.keys(this.scores).forEach(key => {
-                    this._boost(key, 1.1);
-                });
+                this._boost('vitB_complex', 1.15);
+                this._boost('iron', 1.1);
+                this._boost('magnesium', 1.1);
+                this._boost('protein', 1.1);
                 break;
         }
     }
@@ -203,43 +199,18 @@ class NutrientAnalysisEngine {
      * 여러 영양소 결핍이 동시에 나타나는 흔한 패턴을 인식하여 추가 보정
      */
     _applySynergyPatterns() {
+        // 복합 결핍 시너지는 극단적인 경우에만 최소한으로 적용
+        // (점수 과다 누적 방지)
         const s = this.scores;
 
-        // 패턴 1: 빈혈 삼총사 (철분 + B12 + 엽산)
-        if ((s.iron || 0) >= 3 && (s.vitB12 || 0) >= 2 && (s.folate || 0) >= 1) {
-            this._addBase('iron', 1);
-            this._addBase('vitB12', 1);
+        // 패턴 1: 빈혈 삼총사 (철분 + B12 + 엽산) - 높은 임계값
+        if ((s.iron || 0) >= 5 && (s.vitB12 || 0) >= 4) {
             this._addBase('folate', 1);
         }
 
-        // 패턴 2: 뼈 건강 트리오 (비타민D + 칼슘 + 비타민K)
-        if ((s.vitD || 0) >= 3 && (s.calcium || 0) >= 2) {
+        // 패턴 2: 뼈 건강 (비타민D + 칼슘)
+        if ((s.vitD || 0) >= 5 && (s.calcium || 0) >= 4) {
             this._addBase('vitK', 1);
-            this._addBase('magnesium', 1); // 마그네슘도 뼈에 중요
-        }
-
-        // 패턴 3: 스트레스 + 수면 장애 콤보
-        if ((s.magnesium || 0) >= 3 && (s.vitB6 || 0) >= 2) {
-            this._addBase('tryptophan', 1);
-            this._addBase('vitB5', 1);
-        }
-
-        // 패턴 4: 피부 + 모발 + 손톱 트리오
-        if ((s.zinc || 0) >= 3 && (s.biotin || 0) >= 2) {
-            this._addBase('vitA', 1);
-            this._addBase('omega3', 1);
-        }
-
-        // 패턴 5: 면역 약화 복합
-        if ((s.vitC || 0) >= 2 && (s.vitD || 0) >= 2 && (s.zinc || 0) >= 2) {
-            this._addBase('probiotics', 1);
-            this._addBase('vitA', 1);
-        }
-
-        // 패턴 6: 에너지 부족 복합 (만성피로 증후군 패턴)
-        if ((s.iron || 0) >= 3 && (s.vitD || 0) >= 3 && (s.magnesium || 0) >= 2) {
-            this._addBase('coQ10', 1);
-            this._addBase('vitB_complex', 1);
         }
     }
 
@@ -255,17 +226,22 @@ class NutrientAnalysisEngine {
                 const maxPossible = this._getMaxPossibleScore(key);
                 const percentage = Math.min(Math.round((score / Math.max(maxPossible, 1)) * 100), 100);
                 
+                // 완화된 심각도 기준 + 부드러운 문구
                 let severity, severityLabel;
-                if (score >= 6) {
+                if (score >= 8) {
                     severity = 'high';
-                    severityLabel = '주의 필요';
-                } else if (score >= 3) {
+                    severityLabel = '보충 추천';
+                } else if (score >= 4) {
                     severity = 'medium';
-                    severityLabel = '관심 필요';
+                    severityLabel = '관심 가져보기';
                 } else {
                     severity = 'low';
-                    severityLabel = '경미';
+                    severityLabel = '참고';
                 }
+
+                // 해당 영양소에 대한 근거 데이터 첨부
+                const evidences = (this.evidences[key] || [])
+                    .sort((a, b) => b.score - a.score); // 기여도 높은 순 정렬
 
                 return {
                     key,
@@ -273,41 +249,45 @@ class NutrientAnalysisEngine {
                     percentage,
                     severity,
                     severityLabel,
+                    evidences,
                     ...info
                 };
             })
             .sort((a, b) => b.score - a.score);
 
-        // 상위 영양소만 반환 (의미있는 것만)
-        const significant = scored.filter(n => n.score >= 2);
-        const topNutrients = significant.slice(0, 10); // 최대 10개
+        // 상위 영양소만 반환 (score 3 이상, 최대 5개로 축소)
+        const significant = scored.filter(n => n.score >= 3);
+        const topNutrients = significant.slice(0, 5);
 
-        // 전체 건강 점수 계산 (100점 만점, 높을수록 좋음)
-        const totalDeficitScore = scored.reduce((sum, n) => sum + n.score, 0);
-        const maxDeficit = 80; // 이론적 최대 결핍 점수
-        const healthScore = Math.max(0, Math.min(100, Math.round(100 - (totalDeficitScore / maxDeficit) * 100)));
+        // 전체 건강 점수 계산 (관대한 기준)
+        // maxDeficit을 크게 잡아 점수가 크게 깎이지 않도록 함
+        const totalDeficitScore = topNutrients.reduce((sum, n) => sum + n.score, 0);
+        const maxDeficit = 60;
+        // 기본 바닥을 50점으로 설정하고, 감점은 절반만 반영
+        const rawScore = 100 - (totalDeficitScore / maxDeficit) * 50;
+        const healthScore = Math.max(45, Math.min(100, Math.round(rawScore)));
 
-        // 건강 등급
+        // 건강 등급 (긍정적 톤으로 조정)
         let healthGrade, healthLabel, healthColor;
-        if (healthScore >= 85) {
+        if (healthScore >= 90) {
             healthGrade = 'A';
-            healthLabel = '매우 양호';
+            healthLabel = '훌륭해요!';
             healthColor = '#22c55e';
-        } else if (healthScore >= 70) {
+        } else if (healthScore >= 78) {
             healthGrade = 'B';
-            healthLabel = '양호';
+            healthLabel = '잘 하고 있어요';
             healthColor = '#3b82f6';
-        } else if (healthScore >= 55) {
+        } else if (healthScore >= 65) {
             healthGrade = 'C';
-            healthLabel = '관리 필요';
+            healthLabel = '조금만 신경 쓰면 좋아요';
             healthColor = '#f59e0b';
-        } else if (healthScore >= 40) {
+        } else if (healthScore >= 50) {
             healthGrade = 'D';
-            healthLabel = '주의 필요';
+            healthLabel = '관리하면 충분히 좋아질 수 있어요';
             healthColor = '#f97316';
         } else {
-            healthGrade = 'F';
-            healthLabel = '적극적 관리 필요';
+            healthGrade = 'E';
+            healthLabel = '적극적인 관리를 시작해보세요';
             healthColor = '#ef4444';
         }
 
@@ -344,9 +324,17 @@ class NutrientAnalysisEngine {
 
         if (highSeverity.length > 0) {
             advice.push({
-                icon: '🚨',
-                title: '우선 보충 권장',
-                text: `${highSeverity.map(n => n.name).join(', ')}의 결핍 가능성이 높습니다. 식단 개선과 함께 전문가 상담을 권장합니다.`
+                icon: '💊',
+                title: '보충하면 더 좋아질 수 있어요',
+                text: `${highSeverity.map(n => n.name).join(', ')}을(를) 식단에 조금 더 추가해보세요. 작은 변화로도 큰 차이를 느끼실 수 있습니다.`
+            });
+        }
+
+        if (medSeverity.length > 0) {
+            advice.push({
+                icon: '🥗',
+                title: '식단에 참고해보세요',
+                text: `${medSeverity.map(n => n.name).join(', ')}이(가) 조금 부족할 수 있습니다. 관련 식품을 식단에 포함시켜 보세요.`
             });
         }
 
@@ -434,7 +422,9 @@ class NutrientAnalysisEngine {
                 }
             });
 
-            const score = maxPossible > 0 ? Math.round((1 - total / maxPossible) * 100) : 100;
+            // 카테고리 점수도 완화: 최소 30점 보장, 감점 비율 70%만 반영
+            const rawCatScore = maxPossible > 0 ? (1 - total / maxPossible) : 1;
+            const score = Math.round(30 + rawCatScore * 70);
             
             categoryMap[cat.id] = {
                 title: cat.title,
@@ -457,6 +447,19 @@ class NutrientAnalysisEngine {
 
     _addBase(nutrient, points) {
         this.scores[nutrient] = (this.scores[nutrient] || 0) + points;
+    }
+
+    _addEvidence(nutrient, evidence) {
+        if (!this.evidences[nutrient]) {
+            this.evidences[nutrient] = [];
+        }
+        // 같은 질문의 중복 방지
+        const exists = this.evidences[nutrient].find(
+            e => e.questionText === evidence.questionText && e.answerText === evidence.answerText
+        );
+        if (!exists) {
+            this.evidences[nutrient].push(evidence);
+        }
     }
 
     _getMaxPossibleScore(nutrientKey) {
