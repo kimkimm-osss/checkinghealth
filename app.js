@@ -394,7 +394,7 @@ function renderResult(result) {
     if (result.topNutrients.length > 0) {
         html += `
             <div class="result-section-title mt-6">
-                <i class="fas fa-exclamation-triangle text-amber-500"></i> 부족 의심 영양소 TOP ${result.topNutrients.length}
+                <i class="fas fa-seedling text-brand-500"></i> 이런 영양소를 챙겨보세요
             </div>
         `;
 
@@ -405,8 +405,8 @@ function renderResult(result) {
         html += `
             <div class="question-card text-center py-8">
                 <div class="text-4xl mb-3">🎉</div>
-                <div class="font-bold text-gray-700 mb-1">영양 상태가 양호합니다!</div>
-                <div class="text-sm text-gray-400">현재 특별히 우려되는 영양소 결핍이 없습니다.</div>
+                <div class="font-bold text-gray-700 mb-1">영양 균형이 잘 잡혀 있어요!</div>
+                <div class="text-sm text-gray-400">현재 균형 잡힌 영양 상태를 유지하고 계세요. 잘 하고 있습니다! 👏</div>
             </div>
         `;
     }
@@ -490,9 +490,9 @@ function renderNutrientCard(nutrient, index) {
             <!-- Score bar -->
             <div class="w-full bg-gray-100 rounded-full h-1.5 mb-3">
                 <div class="h-full rounded-full transition-all duration-1000 ${
-                    nutrient.severity === 'high' ? 'bg-red-400' : 
-                    nutrient.severity === 'medium' ? 'bg-amber-400' : 'bg-blue-400'
-                }" style="width: ${Math.min(nutrient.score * 10, 100)}%; transition-delay: ${index * 0.1}s;"></div>
+                    nutrient.severity === 'high' ? 'bg-amber-400' : 
+                    nutrient.severity === 'medium' ? 'bg-blue-400' : 'bg-gray-300'
+                }" style="width: ${Math.min(nutrient.score * 8, 100)}%; transition-delay: ${index * 0.1}s;"></div>
             </div>
 
             <!-- Symptoms -->
@@ -513,13 +513,40 @@ function renderNutrientCard(nutrient, index) {
             <!-- Expandable detail -->
             <details class="mt-2">
                 <summary class="text-xs text-brand-600 cursor-pointer font-medium hover:text-brand-700">
-                    <i class="fas fa-chevron-down text-[0.6rem] mr-1"></i>상세 정보 보기
+                    <i class="fas fa-chevron-down text-[0.6rem] mr-1"></i>상세 정보 보기 (약사 상담용)
                 </summary>
-                <div class="mt-2 p-3 bg-gray-50 rounded-lg text-xs text-gray-600 leading-relaxed">
-                    <p class="mb-1"><strong>설명:</strong> ${nutrient.description}</p>
-                    <p class="mb-1"><strong>관련 증상:</strong> ${nutrient.symptoms.join(', ')}</p>
-                    <p class="mb-1"><strong>권장 식품:</strong> ${nutrient.foods.join(', ')}</p>
-                    <p><strong>💡 참고:</strong> ${nutrient.caution}</p>
+                <div class="mt-2 space-y-3">
+                    ${nutrient.evidences && nutrient.evidences.length > 0 ? `
+                    <!-- 설문 응답 근거 -->
+                    <div class="p-3 bg-amber-50 border border-amber-100 rounded-lg">
+                        <div class="text-xs font-semibold text-amber-700 mb-2 flex items-center gap-1">
+                            <i class="fas fa-clipboard-list"></i> 추천 근거 (설문 응답)
+                        </div>
+                        <div class="space-y-1.5">
+                            ${nutrient.evidences.map(ev => `
+                                <div class="flex items-start gap-2 text-xs">
+                                    <span class="flex-shrink-0 w-4 h-4 rounded bg-amber-100 flex items-center justify-center mt-0.5">
+                                        <i class="fas ${ev.categoryIcon} text-amber-500" style="font-size: 0.55rem;"></i>
+                                    </span>
+                                    <div class="text-gray-600 leading-relaxed">
+                                        <span class="text-gray-400">${ev.categoryTitle} ›</span> 
+                                        ${ev.questionText}<br>
+                                        <span class="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 bg-white rounded border border-amber-100 font-medium text-gray-700">
+                                            ${ev.answerIcon} ${ev.answerText}
+                                        </span>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    ` : ''}
+                    <!-- 영양소 상세 정보 -->
+                    <div class="p-3 bg-gray-50 rounded-lg text-xs text-gray-600 leading-relaxed">
+                        <p class="mb-1"><strong>설명:</strong> ${nutrient.description}</p>
+                        <p class="mb-1"><strong>관련 증상:</strong> ${nutrient.symptoms.join(', ')}</p>
+                        <p class="mb-1"><strong>권장 식품:</strong> ${nutrient.foods.join(', ')}</p>
+                        <p><strong>💡 참고:</strong> ${nutrient.caution}</p>
+                    </div>
                 </div>
             </details>
         </div>
@@ -627,12 +654,12 @@ function shareResult() {
     if (!state.result) return;
 
     const r = state.result;
-    const text = `🏥 NutriCheck 자가건강체크 결과\n\n` +
+    const text = `🌿 NutriCheck 자가건강체크 결과\n\n` +
         `📊 영양 균형 점수: ${r.healthScore}점 (등급 ${r.healthGrade})\n` +
         `📋 ${r.healthLabel}\n\n` +
         (r.topNutrients.length > 0 ? 
-            `⚠️ 부족 의심 영양소:\n${r.topNutrients.slice(0, 5).map(n => `  ${n.emoji} ${n.name} (${n.severityLabel})`).join('\n')}\n\n` : 
-            '✅ 영양 상태 양호\n\n') +
+            `💊 챙기면 좋은 영양소:\n${r.topNutrients.slice(0, 5).map(n => `  ${n.emoji} ${n.name} (${n.severityLabel})`).join('\n')}\n\n` : 
+            '✅ 영양 균형 양호\n\n') +
         `👉 나도 체크하기: ${window.location.href}`;
 
     if (navigator.share) {
